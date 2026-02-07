@@ -12,9 +12,13 @@
   "type": "module",
   "dependencies": {
     "@napi-rs/canvas": "^0.1.90",
+    "@slack/bolt": "^4.6.0",
+    "@slack/web-api": "^7.13.0",
     "ag-psd": "^28.1.1",
     "canvas": "^3.2.1",
+    "dotenv": "^17.2.4",
     "headlessphotopea": "^1.0.0",
+    "node-ical": "^0.24.2",
     "playwright": "^1.58.2"
   }
 }

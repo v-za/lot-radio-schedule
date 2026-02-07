@@ -1,4 +1,5 @@
 node_modules/
 _modified.psd
 output/*.png
+output/*.log
 .env

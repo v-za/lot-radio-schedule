@@ -1,3 +1,4 @@
+import "dotenv/config";
 import HeadlessPhotopea from "headlessphotopea";
 import { readPsd, writePsd, initializeCanvas } from "ag-psd";
 import canvas from "canvas";
@@ -6,6 +7,8 @@ import fs from "fs";
 import path from "path";
 import http from "http";
 import { fileURLToPath } from "url";
+import { fetchShows } from "./calendar.js";
+import { WebClient } from "@slack/web-api";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -79,67 +82,24 @@ const DAY_MAP = {
 };
 
 async function main() {
-  const dayArg = process.argv[2] || "Saturday";
-  const psdFile = DAY_MAP[dayArg];
-  if (!psdFile) throw new Error("Unknown day: " + dayArg + ". Use: " + Object.keys(DAY_MAP).join(", "));
+  // CLI: node generate.js [date]
+  // date can be a day name ("Saturday") or YYYY-MM-DD ("2026-02-07")
+  const dateArg = process.argv[2];
+
+  // Fetch shows from Google Calendar
+  const calData = await fetchShows(dateArg);
+  const { day: dayName, month, dayNum, shows } = calData;
+
+  if (shows.length === 0) {
+    console.error(`No shows found for ${dayName} ${month} ${dayNum}. Check the calendar.`);
+    process.exit(1);
+  }
+
+  const psdFile = DAY_MAP[dayName];
+  if (!psdFile) throw new Error("No PSD template for: " + dayName);
   const psdPath = path.join(PSD_DIR, psdFile);
 
-  const showSets = {
-    "8_SHOWS": [
-      { time: "10:00 AM/ET", name: "Love Injection" },
-      { time: "12:00 PM/ET", name: "Darker Than Wax FM with mvns" },
-      { time: "2:00 PM/ET", name: "Ransom Note" },
-      { time: "5:00 PM/ET", name: "Tranquilamente Radio with Yibing" },
-      { time: "6:00 PM/ET", name: "CRYSTALLMESS" },
-      { time: "7:00 PM/ET", name: "Woody92" },
-      { time: "8:00 PM/ET", name: "D'Julz" },
-      { time: "9:00 PM/ET", name: "Twist 4 Year with Don-Ri and Eva Loveless" },
-    ],
-    "6_SHOWS": [
-      { time: "10:00 AM/ET", name: "Love Injection" },
-      { time: "12:00 PM/ET", name: "Darker Than Wax FM with mvns" },
-      { time: "2:00 PM/ET", name: "Ransom Note" },
-      { time: "5:00 PM/ET", name: "CRYSTALLMESS" },
-      { time: "7:00 PM/ET", name: "Woody92" },
-      { time: "9:00 PM/ET", name: "Twist 4 Year with Don-Ri and Eva Loveless" },
-    ],
-    "7_SHOWS": [
-      { time: "10:00 AM/ET", name: "Love Injection" },
-      { time: "12:00 PM/ET", name: "Darker Than Wax FM with mvns" },
-      { time: "2:00 PM/ET", name: "Ransom Note" },
-      { time: "5:00 PM/ET", name: "Tranquilamente Radio with Yibing" },
-      { time: "6:00 PM/ET", name: "CRYSTALLMESS" },
-      { time: "7:00 PM/ET", name: "Woody92" },
-      { time: "9:00 PM/ET", name: "Twist 4 Year with Don-Ri and Eva Loveless" },
-    ],
-    "STRESS_TEST": [
-      { time: "10:00 AM/ET", name: "DJ A" },                                          // short
-      { time: "11:00 AM/ET", name: "Tranquilamente Radio with Yibing" },               // long with "with", overflows
-      { time: "12:00 PM/ET", name: "The Incredibly Long Show Name That Has No With" }, // long, no "with"
-      { time: "2:00 PM/ET", name: "Chill with Max" },                                 // short with "with", fits on one line
-      { time: "4:00 PM/ET", name: "Deep Cuts Presented By The Underground Collective" }, // long, no "with"
-      { time: "6:00 PM/ET", name: "Twist 4 Year with Don-Ri and Eva Loveless" },      // long with "with"
-      { time: "8:00 PM/ET", name: "CRYSTALLMESS" },                                   // medium
-      { time: "9:00 PM/ET", name: "Late Night Sessions with DJ Haze and Friends Forever and The Whole Entire Crew" }, // 3-line wrap test
-    ],
-    "12_SHOWS": [
-      { time: "8:00 AM/ET", name: "Morning Ritual" },
-      { time: "9:00 AM/ET", name: "Sunrise Sessions" },
-      { time: "10:00 AM/ET", name: "Love Injection" },
-      { time: "11:00 AM/ET", name: "Skyline Sessions with DJ Haze" },
-      { time: "12:00 PM/ET", name: "Darker Than Wax FM with mvns" },
-      { time: "1:00 PM/ET", name: "Deep Cuts" },
-      { time: "2:00 PM/ET", name: "Ransom Note" },
-      { time: "4:00 PM/ET", name: "Golden Hour Radio" },
-      { time: "5:00 PM/ET", name: "Tranquilamente Radio with Yibing" },
-      { time: "6:00 PM/ET", name: "CRYSTALLMESS" },
-      { time: "7:00 PM/ET", name: "Woody92" },
-      { time: "9:00 PM/ET", name: "Twist 4 Year with Don-Ri and Eva Loveless" },
-    ],
-  };
-
-  const shows = showSets["8_SHOWS"]; // OG set list for now
-  const scheduleText = buildScheduleText(dayArg, "January", 24, shows);
+  const scheduleText = buildScheduleText(dayName, month, dayNum, shows);
 
   // --- Step A: Modify PSD text using ag-psd + @napi-rs/canvas ---
 
@@ -154,17 +114,20 @@ async function main() {
   if (!textLayer) throw new Error("Text layer not found");
   console.log("A2. Text layer found:", textLayer.text.text.substring(0, 40) + "...");
 
-  // A2b. Shift logo layer to match new text margin
+  // A2b. Align logo with text left margin
   const logoGroup = artboard.children?.find(l => l.name === "TLR LOGO");
+  const textLeftEdge = (textLayer.left || 0) + 64; // text layer origin + xOffset
   if (logoGroup?.children) {
     for (const child of logoGroup.children) {
-      child.left += 48;
-      child.right += 48;
+      const logoWidth = (child.right || 0) - (child.left || 0);
+      child.left = textLeftEdge;
+      child.right = textLeftEdge + logoWidth;
     }
+    console.log("  Logo aligned to x=" + textLeftEdge);
   }
 
   // A2c. Move text layer up for more header space
-  textLayer.top = (textLayer.top || 231) - 30;
+  textLayer.top = (textLayer.top || 231) - 50;
 
   // A3. Update text descriptor
   textLayer.text.text = scheduleText;
@@ -179,16 +142,24 @@ async function main() {
   ctx.textBaseline = "top";
   const timeRegex = /^\d{1,2}:\d{2}\s+(AM|PM)\/ET$/;
   const lines = scheduleText.split("\r");
-  const xOffset = 48;
+  const xOffset = 64;
 
-  // Spacing — gentle bump for fewer shows
+  // Dynamic spacing — fixed inner gaps, pairGap flexes to fill available space
   const numShows = lines.filter(l => timeRegex.test(l)).length;
-  const sparseBoost = numShows < 8 ? 1 + (8 - numShows) * 0.06 : 1; // e.g. 6 shows = 1.12x, 7 = 1.06x
-  const headerGap = Math.round(80 * sparseBoost);
-  const pairGap = Math.round(30 * sparseBoost);
-  const timeLead = Math.round(34 * sparseBoost);
-  const nameLead = Math.round(44 * sparseBoost);
-  console.log(`  Spacing: ${numShows} shows, boost=${sparseBoost.toFixed(2)}`);
+  const timeLead = 32;   // time → show name (fixed)
+  const nameLead = 40;   // show name wrap / leading (fixed)
+  const headerGap = 72;  // header → first show (fixed)
+
+  // Estimate fixed vertical usage: header + per-show content
+  const headerCost = 10 + 40 + nameLead + 40 + headerGap; // "TODAY" + dayline + gap
+  const perShowCost = 30 + timeLead + 40 + nameLead;       // time line + name line
+  const fixedUsage = headerCost + numShows * perShowCost;
+
+  // Available space: text area top to logo zone (~1500px usable)
+  const availableHeight = 1450;
+  const pairSlots = Math.max(numShows - 1, 1);
+  const pairGap = Math.max(36, Math.min(70, Math.round((availableHeight - fixedUsage) / pairSlots)));
+  console.log(`  Spacing: ${numShows} shows, pairGap=${pairGap}, timeLead=${timeLead}, nameLead=${nameLead}`);
 
   let y = 10;
   for (let i = 0; i < lines.length; i++) {
@@ -197,9 +168,9 @@ async function main() {
     const isEmpty = line.trim() === "";
 
     if (isTime) {
-      ctx.font = "28px InputMono";
+      ctx.font = "30px InputMono";
     } else {
-      ctx.font = "38px InputMono";
+      ctx.font = "40px InputMono";
     }
 
     if (!isEmpty) {
@@ -308,13 +279,25 @@ async function main() {
   if (!pngBuffer) {
     console.error("PNG export failed. Result types:", pngResult.map(i => typeof i + ":" + String(i).length));
   }
-  const outPath = path.join(OUTPUT_DIR, `TEST_${dayArg}.png`);
+  const outPath = path.join(OUTPUT_DIR, `TEST_${dayName}.png`);
   fs.writeFileSync(outPath, pngBuffer);
   console.log("B4. PNG exported:", outPath);
 
   await hp.destroy();
   server.close();
   fs.unlinkSync(tmpPath);
+
+  // --- Step C: Post to Slack ---
+  if (process.env.SLACK_BOT_TOKEN && process.env.SLACK_CHANNEL) {
+    const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
+    await slack.filesUploadV2({
+      channel_id: process.env.SLACK_CHANNEL,
+      file: outPath,
+      filename: `${dayName}_${month}_${dayNum}.png`,
+      initial_comment: `Schedule for ${dayName} ${month} ${dayNum}`,
+    });
+    console.log("C. Posted to Slack");
+  }
 }
 
 main().catch(e => console.error(e));
