@@ -158,7 +158,7 @@ async function main() {
   // Available space: text area top to logo zone — fill all the way down
   const availableHeight = 1750;
   const pairSlots = Math.max(numShows - 1, 1);
-  const pairGap = Math.max(50, Math.min(90, Math.round((availableHeight - fixedUsage) / pairSlots)));
+  const pairGap = Math.max(50, Math.min(65, Math.round((availableHeight - fixedUsage) / pairSlots)));
   console.log(`  Spacing: ${numShows} shows, pairGap=${pairGap}, timeLead=${timeLead}, nameLead=${nameLead}`);
 
   let y = 10;
