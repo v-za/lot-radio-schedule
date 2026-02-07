@@ -116,7 +116,7 @@ async function main() {
 
   // A2b. Align logo with text left margin
   const logoGroup = artboard.children?.find(l => l.name === "TLR LOGO");
-  const textLeftEdge = (textLayer.left || 0) + 64; // text layer origin + xOffset
+  const textLeftEdge = (textLayer.left || 0) + 8; // text layer origin + xOffset
   if (logoGroup?.children) {
     for (const child of logoGroup.children) {
       const logoWidth = (child.right || 0) - (child.left || 0);
@@ -127,7 +127,7 @@ async function main() {
   }
 
   // A2c. Move text layer up for more header space
-  textLayer.top = (textLayer.top || 231) - 50;
+  textLayer.top = (textLayer.top || 231) - 20;
 
   // A3. Update text descriptor
   textLayer.text.text = scheduleText;
@@ -142,23 +142,23 @@ async function main() {
   ctx.textBaseline = "top";
   const timeRegex = /^\d{1,2}:\d{2}\s+(AM|PM)\/ET$/;
   const lines = scheduleText.split("\r");
-  const xOffset = 64;
+  const xOffset = 8;
 
   // Dynamic spacing — fixed inner gaps, pairGap flexes to fill available space
   const numShows = lines.filter(l => timeRegex.test(l)).length;
-  const timeLead = 32;   // time → show name (fixed)
-  const nameLead = 40;   // show name wrap / leading (fixed)
-  const headerGap = 72;  // header → first show (fixed)
+  const timeLead = 34;   // time → show name (fixed)
+  const nameLead = 32;   // show name wrap / leading (fixed)
+  const headerGap = 55;  // header → first show (fixed)
 
   // Estimate fixed vertical usage: header + per-show content
-  const headerCost = 10 + 40 + nameLead + 40 + headerGap; // "TODAY" + dayline + gap
-  const perShowCost = 30 + timeLead + 40 + nameLead;       // time line + name line
+  const headerCost = 10 + 34 + nameLead + 34 + headerGap; // "TODAY" + dayline + gap
+  const perShowCost = 24 + timeLead + 34 + nameLead;       // time line + name line
   const fixedUsage = headerCost + numShows * perShowCost;
 
-  // Available space: text area top to logo zone (~1500px usable)
-  const availableHeight = 1500;
+  // Available space: text area top to logo zone — fill all the way down
+  const availableHeight = 1750;
   const pairSlots = Math.max(numShows - 1, 1);
-  const pairGap = Math.max(40, Math.min(70, Math.round((availableHeight - fixedUsage) / pairSlots)));
+  const pairGap = Math.max(50, Math.min(90, Math.round((availableHeight - fixedUsage) / pairSlots)));
   console.log(`  Spacing: ${numShows} shows, pairGap=${pairGap}, timeLead=${timeLead}, nameLead=${nameLead}`);
 
   let y = 10;
@@ -168,9 +168,9 @@ async function main() {
     const isEmpty = line.trim() === "";
 
     if (isTime) {
-      ctx.font = "30px InputMono";
+      ctx.font = "24px InputMono";
     } else {
-      ctx.font = "40px InputMono";
+      ctx.font = "34px InputMono";
     }
 
     if (!isEmpty) {
@@ -185,12 +185,18 @@ async function main() {
             ctx.fillText(remaining, xOffset, y);
             break;
           }
-          // Prefer " with " break on first split
-          const withIdx = first ? remaining.indexOf(" with ") : -1;
+          // Prefer semantic breaks: " with ", " by ", "(" on first split
           let breakIdx = -1;
-          if (withIdx > 0 && ctx.measureText(remaining.substring(0, withIdx)).width <= maxWidth) {
-            breakIdx = withIdx;
-          } else {
+          if (first) {
+            for (const sep of [" with ", " by ", " ("]) {
+              const idx = remaining.indexOf(sep);
+              if (idx > 0 && ctx.measureText(remaining.substring(0, idx)).width <= maxWidth) {
+                breakIdx = idx;
+                break;
+              }
+            }
+          }
+          if (breakIdx < 0) {
             for (let s = remaining.length - 1; s > 0; s--) {
               if (remaining[s] === " " && ctx.measureText(remaining.substring(0, s)).width <= maxWidth) {
                 breakIdx = s;
@@ -199,8 +205,10 @@ async function main() {
             }
           }
           if (breakIdx > 0) {
-            ctx.fillText(remaining.substring(0, breakIdx), xOffset, y);
-            remaining = remaining.substring(breakIdx + 1);
+            ctx.fillText(remaining.substring(0, breakIdx).trimEnd(), xOffset, y);
+            // If we broke at " (", keep the "(" on the next line
+            const nextStart = remaining[breakIdx] === "(" ? breakIdx : breakIdx + 1;
+            remaining = remaining.substring(nextStart).trimStart();
           } else {
             ctx.fillText(remaining, xOffset, y); // can't break, force draw
             break;
@@ -213,7 +221,9 @@ async function main() {
     }
 
     // Variable leading (dynamic)
-    if (i === 1) {
+    if (i === 0) {
+      y += 42; // gap between "TODAY" and date line
+    } else if (i === 1) {
       y += headerGap;
     } else if (isEmpty) {
       y += pairGap;
@@ -228,7 +238,7 @@ async function main() {
 
   // A4b. Logo: keep at original position, only push down if text is too close
   const textAbsoluteBottom = (textLayer.top || 201) + y;
-  const logoDefaultTop = 1700; // near bottom of 1920px image
+  const logoDefaultTop = 1620; // near bottom of 1920px image
   const logoMinGap = 50;
   const logoTargetTop = Math.max(logoDefaultTop, textAbsoluteBottom + logoMinGap);
   if (logoGroup?.children) {

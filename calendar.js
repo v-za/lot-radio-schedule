@@ -14,7 +14,7 @@ function formatTimeET(date) {
   const hour = parts.find((p) => p.type === "hour").value;
   const minute = parts.find((p) => p.type === "minute").value;
   const period = parts.find((p) => p.type === "dayPeriod").value;
-  return `${hour}:${minute}  ${period}/ET`;
+  return `${hour}:${minute} ${period}/ET`;
 }
 
 // Get YYYY-MM-DD string for a Date in ET
