@@ -156,9 +156,9 @@ async function main() {
   const fixedUsage = headerCost + numShows * perShowCost;
 
   // Available space: text area top to logo zone (~1500px usable)
-  const availableHeight = 1450;
+  const availableHeight = 1500;
   const pairSlots = Math.max(numShows - 1, 1);
-  const pairGap = Math.max(36, Math.min(70, Math.round((availableHeight - fixedUsage) / pairSlots)));
+  const pairGap = Math.max(40, Math.min(70, Math.round((availableHeight - fixedUsage) / pairSlots)));
   console.log(`  Spacing: ${numShows} shows, pairGap=${pairGap}, timeLead=${timeLead}, nameLead=${nameLead}`);
 
   let y = 10;

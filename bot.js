@@ -13,13 +13,13 @@ const app = new App({
 });
 
 const DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_RE = /^(\d{2})-(\d{2})-(\d{4})$/;
 
 const HELP_TEXT = `*Schedule Bot Commands:*
 • \`today\` — today's schedule
 • \`tomorrow\` — tomorrow's schedule
 • \`Monday\` - \`Sunday\` — next occurrence of that day
-• \`2026-02-10\` — specific date (YYYY-MM-DD)
+• \`02-10-2026\` — specific date (MM-DD-YYYY)
 • \`help\` — show this message`;
 
 app.message(async ({ message, say }) => {
@@ -44,7 +44,8 @@ app.message(async ({ message, say }) => {
   } else if (DAYS.includes(lower)) {
     dateArg = text;
   } else if (DATE_RE.test(text)) {
-    dateArg = text;
+    const [, mm, dd, yyyy] = text.match(DATE_RE);
+    dateArg = `${yyyy}-${mm}-${dd}`;
   }
 
   if (dateArg === null) return; // not a schedule request
