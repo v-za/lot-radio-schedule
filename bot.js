@@ -15,11 +15,23 @@ const app = new App({
 const DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+const HELP_TEXT = `*Schedule Bot Commands:*
+• \`today\` — today's schedule
+• \`tomorrow\` — tomorrow's schedule
+• \`Monday\` - \`Sunday\` — next occurrence of that day
+• \`2026-02-10\` — specific date (YYYY-MM-DD)
+• \`help\` — show this message`;
+
 app.message(async ({ message, say }) => {
   if (message.subtype || message.bot_id) return;
 
   const text = (message.text || "").trim();
   const lower = text.toLowerCase();
+
+  if (lower === "help" || lower === "commands") {
+    await say(HELP_TEXT);
+    return;
+  }
 
   // Match a day name or YYYY-MM-DD date
   let dateArg = null;
