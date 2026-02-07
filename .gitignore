@@ -1,4 +1,4 @@
 node_modules/
 _modified.psd
-TEST_*.png
+output/*.png
 .env

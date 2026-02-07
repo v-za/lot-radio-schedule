@@ -5,18 +5,22 @@ import { createCanvas as skiaCanvas, GlobalFonts } from "@napi-rs/canvas";
 import fs from "fs";
 import path from "path";
 import http from "http";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ag-psd needs node-canvas for PSD layer compositing
 initializeCanvas(canvas.createCanvas, canvas.createImageData);
 
 // Register InputMonoNarrow in Skia for our text rendering
 GlobalFonts.registerFromPath(
-  "/Users/vinitpatel/Downloads/the lot radio/InputMonoNarrow/InputMonoNarrow-Regular.ttf",
+  path.join(__dirname, "fonts", "InputMonoNarrow-Regular.ttf"),
   "InputMono"
 );
 
-const PSD_DIR = "/Users/vinitpatel/Downloads/the lot radio/10 SHOW EXAMPLE";
-const OUTPUT_DIR = "/Users/vinitpatel/Downloads/the lot radio";
+const PSD_DIR = path.join(__dirname, "templates");
+const OUTPUT_DIR = path.join(__dirname, "output");
 
 function servePSD(psdPath) {
   return new Promise((resolve) => {
@@ -65,13 +69,13 @@ function buildScheduleText(dayName, month, dayNum, shows) {
 }
 
 const DAY_MAP = {
-  Sunday:    "01 Sunday/XX-XX-XXXX Sunday.psd",
-  Monday:    "02 Monday/XX-XX-XXXX Monday.psd",
-  Tuesday:   "03 Tuesday/XX-XX-XXXX Tuedsay.psd",
-  Wednesday: "04 Wednesday/XX-XX-XXXX Wednesday.psd",
-  Thursday:  "05 Thursday/XX-XX-XXXX Thursday.psd",
-  Friday:    "06 Friday/XX-XX-XXXX Friday.psd",
-  Saturday:  "07 Saturday/XX-XX-XXXX Saturday.psd",
+  Sunday:    "sunday.psd",
+  Monday:    "monday.psd",
+  Tuesday:   "tuesday.psd",
+  Wednesday: "wednesday.psd",
+  Thursday:  "thursday.psd",
+  Friday:    "friday.psd",
+  Saturday:  "saturday.psd",
 };
 
 async function main() {
@@ -279,7 +283,7 @@ async function main() {
   console.log("B1. Photopea ready");
 
   // B2. Load font
-  const fontBuf = fs.readFileSync("/Users/vinitpatel/Downloads/the lot radio/InputMonoNarrow/InputMonoNarrow-Regular.ttf");
+  const fontBuf = fs.readFileSync(path.join(__dirname, "fonts", "InputMonoNarrow-Regular.ttf"));
   await hp.addBinaryAsset(fontBuf);
   console.log("B2. Font loaded");
 
@@ -292,10 +296,17 @@ async function main() {
   const pngResult = await hp.runScript('app.activeDocument.saveToOE("png");');
   let pngBuffer;
   for (const item of pngResult) {
+    if (item instanceof ArrayBuffer || Buffer.isBuffer(item)) {
+      pngBuffer = Buffer.from(item);
+      break;
+    }
     if (typeof item === "string" && item !== "done" && item.length > 100) {
       pngBuffer = Buffer.from(item, "base64");
       break;
     }
+  }
+  if (!pngBuffer) {
+    console.error("PNG export failed. Result types:", pngResult.map(i => typeof i + ":" + String(i).length));
   }
   const outPath = path.join(OUTPUT_DIR, `TEST_${dayArg}.png`);
   fs.writeFileSync(outPath, pngBuffer);
