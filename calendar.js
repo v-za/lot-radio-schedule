@@ -67,7 +67,7 @@ function resolveDayName(name) {
   const today = now.getDay();
   const diff = (idx - today + 7) % 7;
   const target = new Date(now);
-  target.setDate(target.getDate() + (diff === 0 ? 0 : diff));
+  target.setDate(target.getDate() + (diff || 7));
   return toETDateString(target);
 }
 

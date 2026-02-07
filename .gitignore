@@ -3,3 +3,4 @@ _modified.psd
 output/*.png
 output/*.log
 .env
+.DS_Store

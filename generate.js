@@ -25,6 +25,24 @@ GlobalFonts.registerFromPath(
 const PSD_DIR = path.join(__dirname, "templates");
 const OUTPUT_DIR = path.join(__dirname, "output");
 
+// Layout config
+const LAYOUT = {
+  timeFontSize: 24,
+  nameFontSize: 34,
+  timeLead: 34,       // time → show name gap
+  nameLead: 32,       // show name wrap leading
+  headerGap: 42,      // header → first show
+  xOffset: 8,         // left margin for text
+  minCanvasW: 800,
+  minCanvasH: 1800,
+  availableHeight: 1750,
+  minPairGap: 50,
+  maxPairGap: 65,
+  logoDefaultTop: 1620,
+  logoMinGap: 50,
+  textTopAdjust: 20,  // pixels to move text layer up
+};
+
 function servePSD(psdPath) {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
@@ -116,7 +134,7 @@ async function main() {
 
   // A2b. Align logo with text left margin
   const logoGroup = artboard.children?.find(l => l.name === "TLR LOGO");
-  const textLeftEdge = (textLayer.left || 0) + 8; // text layer origin + xOffset
+  const textLeftEdge = (textLayer.left || 0) + LAYOUT.xOffset;
   if (logoGroup?.children) {
     for (const child of logoGroup.children) {
       const logoWidth = (child.right || 0) - (child.left || 0);
@@ -127,38 +145,33 @@ async function main() {
   }
 
   // A2c. Move text layer up for more header space
-  textLayer.top = (textLayer.top || 231) - 20;
+  textLayer.top = (textLayer.top || 231) - LAYOUT.textTopAdjust;
 
   // A3. Update text descriptor
   textLayer.text.text = scheduleText;
   console.log("A3. Text descriptor updated");
 
   // A4. Render new text as bitmap with @napi-rs/canvas (Skia)
-  const w = Math.max((textLayer.right || 0) - (textLayer.left || 0), 800);
-  const h = Math.max((textLayer.bottom || 0) - (textLayer.top || 0), 1800);
+  const w = Math.max((textLayer.right || 0) - (textLayer.left || 0), LAYOUT.minCanvasW);
+  const h = Math.max((textLayer.bottom || 0) - (textLayer.top || 0), LAYOUT.minCanvasH);
   const textBitmap = skiaCanvas(w, h);
   const ctx = textBitmap.getContext("2d");
   ctx.fillStyle = "white";
   ctx.textBaseline = "top";
   const timeRegex = /^\d{1,2}:\d{2}\s+(AM|PM)\/ET$/;
   const lines = scheduleText.split("\r");
-  const xOffset = 8;
+  const { xOffset, timeLead, nameLead, headerGap, timeFontSize, nameFontSize } = LAYOUT;
 
   // Dynamic spacing — fixed inner gaps, pairGap flexes to fill available space
   const numShows = lines.filter(l => timeRegex.test(l)).length;
-  const timeLead = 34;   // time → show name (fixed)
-  const nameLead = 32;   // show name wrap / leading (fixed)
-  const headerGap = 42;  // header → first show (fixed)
 
   // Estimate fixed vertical usage: header + per-show content
-  const headerCost = 10 + 34 + nameLead + 34 + headerGap; // "TODAY" + dayline + gap
-  const perShowCost = 24 + timeLead + 34 + nameLead;       // time line + name line
+  const headerCost = 10 + nameFontSize + nameLead + nameFontSize + headerGap;
+  const perShowCost = timeFontSize + timeLead + nameFontSize + nameLead;
   const fixedUsage = headerCost + numShows * perShowCost;
 
-  // Available space: text area top to logo zone — fill all the way down
-  const availableHeight = 1750;
   const pairSlots = Math.max(numShows - 1, 1);
-  const pairGap = Math.max(50, Math.min(65, Math.round((availableHeight - fixedUsage) / pairSlots)));
+  const pairGap = Math.max(LAYOUT.minPairGap, Math.min(LAYOUT.maxPairGap, Math.round((LAYOUT.availableHeight - fixedUsage) / pairSlots)));
   console.log(`  Spacing: ${numShows} shows, pairGap=${pairGap}, timeLead=${timeLead}, nameLead=${nameLead}`);
 
   let y = 10;
@@ -168,52 +181,66 @@ async function main() {
     const isEmpty = line.trim() === "";
 
     if (isTime) {
-      ctx.font = "24px InputMono";
+      ctx.font = `${timeFontSize}px InputMono`;
     } else {
-      ctx.font = "34px InputMono";
+      ctx.font = `${nameFontSize}px InputMono`;
     }
 
     if (!isEmpty) {
       const maxWidth = w - xOffset - 20;
       if (!isTime) {
-        // Word-wrap loop: break into sub-lines until everything fits
-        let remaining = line;
-        let first = true;
-        while (remaining.length > 0) {
-          if (!first) y += nameLead;
-          if (ctx.measureText(remaining).width <= maxWidth) {
-            ctx.fillText(remaining, xOffset, y);
-            break;
+        // Force-split on " by " and " (" before wrapping
+        let segments = [line];
+        for (const sep of [" by ", " ("]) {
+          const expanded = [];
+          for (const seg of segments) {
+            const idx = seg.indexOf(sep);
+            if (idx > 0) {
+              expanded.push(seg.substring(0, idx));
+              const rest = sep.startsWith(" ") ? sep.trimStart() + seg.substring(idx + sep.length) : seg.substring(idx + sep.length);
+              expanded.push(rest);
+            } else {
+              expanded.push(seg);
+            }
           }
-          // Prefer semantic breaks: " with ", " by ", "(" on first split
-          let breakIdx = -1;
-          if (first) {
-            for (const sep of [" with ", " by ", " ("]) {
-              const idx = remaining.indexOf(sep);
+          segments = expanded;
+        }
+        // Word-wrap each segment, then overflow-wrap within if still too wide
+        for (let si = 0; si < segments.length; si++) {
+          let remaining = segments[si].trim();
+          if (si > 0) y += nameLead;
+          let first = si === 0;
+          while (remaining.length > 0) {
+            if (!first) y += nameLead;
+            if (ctx.measureText(remaining).width <= maxWidth) {
+              ctx.fillText(remaining, xOffset, y);
+              break;
+            }
+            // Prefer semantic break on " with " on first split of first segment
+            let breakIdx = -1;
+            if (first) {
+              const idx = remaining.indexOf(" with ");
               if (idx > 0 && ctx.measureText(remaining.substring(0, idx)).width <= maxWidth) {
                 breakIdx = idx;
-                break;
               }
             }
-          }
-          if (breakIdx < 0) {
-            for (let s = remaining.length - 1; s > 0; s--) {
-              if (remaining[s] === " " && ctx.measureText(remaining.substring(0, s)).width <= maxWidth) {
-                breakIdx = s;
-                break;
+            if (breakIdx < 0) {
+              for (let s = remaining.length - 1; s > 0; s--) {
+                if (remaining[s] === " " && ctx.measureText(remaining.substring(0, s)).width <= maxWidth) {
+                  breakIdx = s;
+                  break;
+                }
               }
             }
+            if (breakIdx > 0) {
+              ctx.fillText(remaining.substring(0, breakIdx).trimEnd(), xOffset, y);
+              remaining = remaining.substring(breakIdx + 1).trimStart();
+            } else {
+              ctx.fillText(remaining, xOffset, y);
+              break;
+            }
+            first = false;
           }
-          if (breakIdx > 0) {
-            ctx.fillText(remaining.substring(0, breakIdx).trimEnd(), xOffset, y);
-            // If we broke at " (", keep the "(" on the next line
-            const nextStart = remaining[breakIdx] === "(" ? breakIdx : breakIdx + 1;
-            remaining = remaining.substring(nextStart).trimStart();
-          } else {
-            ctx.fillText(remaining, xOffset, y); // can't break, force draw
-            break;
-          }
-          first = false;
         }
       } else {
         ctx.fillText(line, xOffset, y);
@@ -222,7 +249,7 @@ async function main() {
 
     // Variable leading (dynamic)
     if (i === 0) {
-      y += 42; // gap between "TODAY" and date line
+      y += headerGap; // gap between "TODAY" and date line
     } else if (i === 1) {
       y += headerGap;
     } else if (isEmpty) {
@@ -238,9 +265,7 @@ async function main() {
 
   // A4b. Logo: keep at original position, only push down if text is too close
   const textAbsoluteBottom = (textLayer.top || 201) + y;
-  const logoDefaultTop = 1620; // near bottom of 1920px image
-  const logoMinGap = 50;
-  const logoTargetTop = Math.max(logoDefaultTop, textAbsoluteBottom + logoMinGap);
+  const logoTargetTop = Math.max(LAYOUT.logoDefaultTop, textAbsoluteBottom + LAYOUT.logoMinGap);
   if (logoGroup?.children) {
     for (const child of logoGroup.children) {
       const logoHeight = (child.bottom || 0) - (child.top || 0);
@@ -287,7 +312,10 @@ async function main() {
     }
   }
   if (!pngBuffer) {
-    console.error("PNG export failed. Result types:", pngResult.map(i => typeof i + ":" + String(i).length));
+    await hp.destroy();
+    server.close();
+    fs.unlinkSync(tmpPath);
+    throw new Error("PNG export failed. Result types: " + pngResult.map(i => typeof i + ":" + String(i).length));
   }
   const outPath = path.join(OUTPUT_DIR, `TEST_${dayName}.png`);
   fs.writeFileSync(outPath, pngBuffer);
