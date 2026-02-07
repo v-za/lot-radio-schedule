@@ -30,7 +30,8 @@ const LAYOUT = {
   timeFontSize: 24,
   nameFontSize: 34,
   timeLead: 34,       // time → show name gap
-  nameLead: 32,       // show name wrap leading
+  nameLead: 32,       // after show name block
+  subLineLead: 20,    // between lines within same show (wrap/split)
   headerGap: 42,      // header → first show
   xOffset: 8,         // left margin for text
   minCanvasW: 800,
@@ -160,7 +161,7 @@ async function main() {
   ctx.textBaseline = "top";
   const timeRegex = /^\d{1,2}:\d{2}\s+(AM|PM)\/ET$/;
   const lines = scheduleText.split("\r");
-  const { xOffset, timeLead, nameLead, headerGap, timeFontSize, nameFontSize } = LAYOUT;
+  const { xOffset, timeLead, nameLead, subLineLead, headerGap, timeFontSize, nameFontSize } = LAYOUT;
 
   // Dynamic spacing — fixed inner gaps, pairGap flexes to fill available space
   const numShows = lines.filter(l => timeRegex.test(l)).length;
@@ -208,10 +209,10 @@ async function main() {
         // Word-wrap each segment, then overflow-wrap within if still too wide
         for (let si = 0; si < segments.length; si++) {
           let remaining = segments[si].trim();
-          if (si > 0) y += nameLead;
+          if (si > 0) y += subLineLead;
           let first = si === 0;
           while (remaining.length > 0) {
-            if (!first) y += nameLead;
+            if (!first) y += subLineLead;
             if (ctx.measureText(remaining).width <= maxWidth) {
               ctx.fillText(remaining, xOffset, y);
               break;
