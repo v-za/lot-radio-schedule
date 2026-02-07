@@ -1,0 +1,4 @@
+node_modules/
+_modified.psd
+TEST_*.png
+.env

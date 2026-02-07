@@ -1,0 +1,20 @@
+{
+  "name": "lot-radio-schedule",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.90",
+    "ag-psd": "^28.1.1",
+    "canvas": "^3.2.1",
+    "headlessphotopea": "^1.0.0",
+    "playwright": "^1.58.2"
+  }
+}
