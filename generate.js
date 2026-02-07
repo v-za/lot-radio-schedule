@@ -148,7 +148,7 @@ async function main() {
   const numShows = lines.filter(l => timeRegex.test(l)).length;
   const timeLead = 34;   // time → show name (fixed)
   const nameLead = 32;   // show name wrap / leading (fixed)
-  const headerGap = 55;  // header → first show (fixed)
+  const headerGap = 42;  // header → first show (fixed)
 
   // Estimate fixed vertical usage: header + per-show content
   const headerCost = 10 + 34 + nameLead + 34 + headerGap; // "TODAY" + dayline + gap
