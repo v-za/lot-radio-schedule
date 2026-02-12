@@ -202,14 +202,15 @@ async function main() {
           }
           // Try semantic breaks first
           let breakIdx = -1;
-          let keepSep = false;
+          let matchedSep = null;
           const lower = remaining.toLowerCase();
           for (const sep of semanticSeps) {
             const idx = lower.indexOf(sep);
-            const checkEnd = sep === ":" ? idx + 1 : idx; // include colon in width check
+            const keepOnLine1 = sep === ":" || sep === " invites ";
+            const checkEnd = keepOnLine1 ? idx + sep.length : idx;
             if (idx > 0 && ctx.measureText(remaining.substring(0, checkEnd)).width <= maxWidth) {
               breakIdx = idx;
-              keepSep = sep === " (" || sep === ":";
+              matchedSep = sep;
               break;
             }
           }
@@ -223,14 +224,15 @@ async function main() {
             }
           }
           if (breakIdx > 0) {
-            if (keepSep && remaining[breakIdx] === "(") {
+            if (matchedSep === " (") {
               // Keep "(" on the next line
               ctx.fillText(remaining.substring(0, breakIdx).trimEnd(), xOffset, y);
-              remaining = "(" + remaining.substring(breakIdx + 1).trimStart();
-            } else if (keepSep && remaining[breakIdx] === ":") {
-              // Keep ":" on first line, rest on next line
-              ctx.fillText(remaining.substring(0, breakIdx + 1).trimEnd(), xOffset, y);
-              remaining = remaining.substring(breakIdx + 1).trimStart();
+              remaining = "(" + remaining.substring(breakIdx + 2).trimStart();
+            } else if (matchedSep === ":" || matchedSep === " invites ") {
+              // Keep separator on first line, rest on next line
+              const endIdx = breakIdx + matchedSep.length;
+              ctx.fillText(remaining.substring(0, endIdx).trimEnd(), xOffset, y);
+              remaining = remaining.substring(endIdx).trimStart();
             } else {
               ctx.fillText(remaining.substring(0, breakIdx).trimEnd(), xOffset, y);
               remaining = remaining.substring(breakIdx + 1).trimStart();
