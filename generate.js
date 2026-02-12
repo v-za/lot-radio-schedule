@@ -31,7 +31,7 @@ const LAYOUT = {
   nameFontSize: 34,
   timeLead: 34,       // time → show name gap
   nameLead: 32,       // after show name block
-  subLineLead: 20,    // between lines within same show (wrap/split)
+  subLineLead: 32,    // between lines within same show (wrap/split)
   headerGap: 42,      // header → first show
   xOffset: 8,         // left margin for text
   minCanvasW: 800,
@@ -190,58 +190,56 @@ async function main() {
     if (!isEmpty) {
       const maxWidth = w - xOffset - 20;
       if (!isTime) {
-        // Force-split on " by " and " (" before wrapping
-        let segments = [line];
-        for (const sep of [" by ", " ("]) {
-          const expanded = [];
-          for (const seg of segments) {
-            const idx = seg.indexOf(sep);
-            if (idx > 0) {
-              expanded.push(seg.substring(0, idx));
-              const rest = sep.startsWith(" ") ? sep.trimStart() + seg.substring(idx + sep.length) : seg.substring(idx + sep.length);
-              expanded.push(rest);
-            } else {
-              expanded.push(seg);
-            }
+        // Semantic break separators (case-insensitive, checked in order)
+        const semanticSeps = [" with ", " by ", " invites ", " (", ":"];
+        let remaining = line;
+        let first = true;
+        while (remaining.length > 0) {
+          if (!first) y += subLineLead;
+          if (ctx.measureText(remaining).width <= maxWidth) {
+            ctx.fillText(remaining, xOffset, y);
+            break;
           }
-          segments = expanded;
-        }
-        // Word-wrap each segment, then overflow-wrap within if still too wide
-        for (let si = 0; si < segments.length; si++) {
-          let remaining = segments[si].trim();
-          if (si > 0) y += subLineLead;
-          let first = si === 0;
-          while (remaining.length > 0) {
-            if (!first) y += subLineLead;
-            if (ctx.measureText(remaining).width <= maxWidth) {
-              ctx.fillText(remaining, xOffset, y);
+          // Try semantic breaks first
+          let breakIdx = -1;
+          let keepSep = false;
+          const lower = remaining.toLowerCase();
+          for (const sep of semanticSeps) {
+            const idx = lower.indexOf(sep);
+            const checkEnd = sep === ":" ? idx + 1 : idx; // include colon in width check
+            if (idx > 0 && ctx.measureText(remaining.substring(0, checkEnd)).width <= maxWidth) {
+              breakIdx = idx;
+              keepSep = sep === " (" || sep === ":";
               break;
             }
-            // Prefer semantic break on " with " on first split of first segment
-            let breakIdx = -1;
-            if (first) {
-              const idx = remaining.indexOf(" with ");
-              if (idx > 0 && ctx.measureText(remaining.substring(0, idx)).width <= maxWidth) {
-                breakIdx = idx;
+          }
+          // Fall back to last space that fits
+          if (breakIdx < 0) {
+            for (let s = remaining.length - 1; s > 0; s--) {
+              if (remaining[s] === " " && ctx.measureText(remaining.substring(0, s)).width <= maxWidth) {
+                breakIdx = s;
+                break;
               }
             }
-            if (breakIdx < 0) {
-              for (let s = remaining.length - 1; s > 0; s--) {
-                if (remaining[s] === " " && ctx.measureText(remaining.substring(0, s)).width <= maxWidth) {
-                  breakIdx = s;
-                  break;
-                }
-              }
-            }
-            if (breakIdx > 0) {
+          }
+          if (breakIdx > 0) {
+            if (keepSep && remaining[breakIdx] === "(") {
+              // Keep "(" on the next line
               ctx.fillText(remaining.substring(0, breakIdx).trimEnd(), xOffset, y);
+              remaining = "(" + remaining.substring(breakIdx + 1).trimStart();
+            } else if (keepSep && remaining[breakIdx] === ":") {
+              // Keep ":" on first line, rest on next line
+              ctx.fillText(remaining.substring(0, breakIdx + 1).trimEnd(), xOffset, y);
               remaining = remaining.substring(breakIdx + 1).trimStart();
             } else {
-              ctx.fillText(remaining, xOffset, y);
-              break;
+              ctx.fillText(remaining.substring(0, breakIdx).trimEnd(), xOffset, y);
+              remaining = remaining.substring(breakIdx + 1).trimStart();
             }
-            first = false;
+          } else {
+            ctx.fillText(remaining, xOffset, y);
+            break;
           }
+          first = false;
         }
       } else {
         ctx.fillText(line, xOffset, y);

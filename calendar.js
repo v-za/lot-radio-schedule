@@ -55,7 +55,7 @@ function getETDateInfo(date) {
 function cleanSummary(summary) {
   if (!summary) return "";
   if (/restream/i.test(summary)) return "";
-  return summary.replace(/^[\p{Emoji}\p{Emoji_Component}\s]+/u, "").trim();
+  return summary.replace(/^(?:[\p{Emoji_Presentation}\p{Extended_Pictographic}\u200d\ufe0f]\s*)+/u, "").trim();
 }
 
 // Resolve a day name ("Saturday") to the next occurrence as YYYY-MM-DD
