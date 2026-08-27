@@ -104,10 +104,15 @@ async function main() {
   // CLI: node generate.js [date]
   // date can be a day name ("Saturday") or YYYY-MM-DD ("2026-02-07")
   const dateArg = process.argv[2];
+  const START_TIME = Date.now();
+
+  console.log("=== Lot Radio Schedule Generator ===\n");
 
   // Fetch shows from Google Calendar
+  console.log("📅 Fetching calendar...");
   const calData = await fetchShows(dateArg);
   const { day: dayName, month, dayNum, shows } = calData;
+  console.log(`   Found ${shows.length} shows for ${dayName} ${month} ${dayNum}\n`);
 
   if (shows.length === 0) {
     console.error(`No shows found for ${dayName} ${month} ${dayNum}. Check the calendar.`);
@@ -121,17 +126,18 @@ async function main() {
   const scheduleText = buildScheduleText(dayName, month, dayNum, shows);
 
   // --- Step A: Modify PSD text using ag-psd + @napi-rs/canvas ---
+  console.log("🎨 Processing template...");
 
   // A1. Read PSD
   const psdBuffer = fs.readFileSync(psdPath);
   const psd = readPsd(psdBuffer);
-  console.log("A1. PSD read");
+  console.log("   ✓ PSD loaded");
 
   // A2. Find text layer
   const artboard = psd.children?.[0];
   const textLayer = findTextLayer(artboard.children || [], "SCHEDULE TEXT");
   if (!textLayer) throw new Error("Text layer not found");
-  console.log("A2. Text layer found:", textLayer.text.text.substring(0, 40) + "...");
+  console.log("   ✓ Text layer found");
 
   // A2b. Align logo with text left margin
   const logoGroup = artboard.children?.find(l => l.name === "TLR LOGO");
@@ -150,9 +156,10 @@ async function main() {
 
   // A3. Update text descriptor
   textLayer.text.text = scheduleText;
-  console.log("A3. Text descriptor updated");
+  console.log("   ✓ Text updated");
 
   // A4. Render new text as bitmap with @napi-rs/canvas (Skia)
+  console.log("   🎨 Rendering text bitmap...");
   const w = Math.max((textLayer.right || 0) - (textLayer.left || 0), LAYOUT.minCanvasW);
   const h = Math.max((textLayer.bottom || 0) - (textLayer.top || 0), LAYOUT.minCanvasH);
   const textBitmap = skiaCanvas(w, h);
@@ -262,7 +269,7 @@ async function main() {
     }
   }
   textLayer.canvas = textBitmap;
-  console.log("A4. Text bitmap rendered (" + w + "x" + h + "), textEndY=" + y);
+  console.log(`   ✓ Text bitmap rendered (${w}x${h})\n`);
 
   // A4b. Logo: keep at original position, only push down if text is too close
   const textAbsoluteBottom = (textLayer.top || 201) + y;
@@ -280,26 +287,39 @@ async function main() {
   const modifiedPsd = writePsd(psd);
   const tmpPath = path.join(OUTPUT_DIR, "_modified.psd");
   fs.writeFileSync(tmpPath, Buffer.from(modifiedPsd));
-  console.log("A5. Modified PSD written");
+  console.log("   ✓ PSD written\n");
 
   // --- Step B: Open in Photopea + export PNG ---
+  console.log("📸 Rendering in Photopea...");
 
   // B1. Start Photopea
   const hp = new HeadlessPhotopea();
   await hp.isInitialized();
-  console.log("B1. Photopea ready");
+  console.log("   ✓ Photopea initialized");
 
   // B2. Load font
   const fontBuf = fs.readFileSync(path.join(__dirname, "fonts", "InputMonoNarrow-Regular.ttf"));
   await hp.addBinaryAsset(fontBuf);
-  console.log("B2. Font loaded");
+  console.log("   ✓ Font loaded");
 
-  // B3. Open modified PSD
+  // B3. Open modified PSD with timeout
+  console.log("   ⏳ Opening template (this may take a moment)...");
   const { server, port } = await servePSD(tmpPath);
-  await hp.openFromURL(`http://127.0.0.1:${port}/file.psd`, false);
-  console.log("B3. Modified PSD opened");
+  const openTimeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("Photopea timeout: PSD open took >30s")), 30000)
+  );
+  try {
+    await Promise.race([hp.openFromURL(`http://127.0.0.1:${port}/file.psd`, false), openTimeout]);
+  } catch (e) {
+    await hp.destroy();
+    server.close();
+    fs.unlinkSync(tmpPath);
+    throw e;
+  }
+  console.log("   ✓ Template open");
 
   // B4. Export PNG
+  console.log("   ⏳ Exporting PNG...");
   const pngResult = await hp.runScript('app.activeDocument.saveToOE("png");');
   let pngBuffer;
   for (const item of pngResult) {
@@ -320,7 +340,7 @@ async function main() {
   }
   const outPath = path.join(OUTPUT_DIR, `TEST_${dayName}.png`);
   fs.writeFileSync(outPath, pngBuffer);
-  console.log("B4. PNG exported:", outPath);
+  console.log("   ✓ PNG exported\n");
 
   await hp.destroy();
   server.close();
@@ -328,6 +348,7 @@ async function main() {
 
   // --- Step C: Post to Slack ---
   if (process.env.SLACK_BOT_TOKEN && process.env.SLACK_CHANNEL) {
+    console.log("📤 Uploading to Slack...");
     const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
     await slack.filesUploadV2({
       channel_id: process.env.SLACK_CHANNEL,
@@ -335,8 +356,11 @@ async function main() {
       filename: `${dayName}_${month}_${dayNum}.png`,
       initial_comment: `Schedule for ${dayName} ${month} ${dayNum}`,
     });
-    console.log("C. Posted to Slack");
+    console.log("   ✓ Posted to Slack\n");
   }
+
+  const elapsed = Math.round((Date.now() - START_TIME) / 1000);
+  console.log(`✅ Done in ${elapsed}s: ${outPath}`);
 }
 
 main().catch(e => console.error(e));
